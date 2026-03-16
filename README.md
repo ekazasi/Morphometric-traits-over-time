@@ -43,3 +43,43 @@ The Difference in Your Plots:
 In the BM Plot: We can see many distinct dots spread out. This is because, in neutral evolution, lineages wander randomly. No two lineages are likely to end up in the exact same spot, so we see a wide "cloud" of individual shapes.
 
 In the OU Plot: We see fewer distinct dots because of convergence. Selection is pulling all 30 lineages toward the exact same target shape. By the time they get to 20 Ma (purple), they have all become so similar that their dots are literally stacked on top of each other.
+
+
+
+<br>
+<br>
+<br>
+
+**BM: Shape vs. Time** plot
+
+As the "Phylo Distance" (time since they shared an ancestor) increases, the "Procrustes Distance" (how different they look) increases proportionally.
+
+The Mantel test for BM has a very high $r$ value = 0.8315
+
+This is a system with strong phylogenetic signal. Closely related species look similar, and distant relatives look very different. Shape is a direct proxy for time.
+
+
+**OU: Shape vs. Time** plot
+
+This is Adaptation overriding History. Because selection is pulling all species toward the same target skull, even species that are very distantly related (high Phylo Distance) end up looking somewhat similar to each other. History is "erased" by selection.
+
+Once a lineage reaches the area around the optimum, it stops getting "more different" from its cousins; it just wobbles around the target. This is why the Procrustes distance stops growing linearly and starts to "saturate."
+
+
+**OU: Rigorous Shape Space**
+
+In an OU model, because selection is pulling everything toward one point, there is actually less total variation in shape between the species at the end of the simulation compared to BM. When variation is low and "randomized" around an optimum, PCA eigenvalues drop because there isn't one "big" direction of change—everything is just clustering.
+
+1. The Conflict: Selection vs. Drift
+
+Deterministic Pull (Selection): This is the part that wants to move the skull in a straight line toward the Red Star.
+
+Stochastic Noise (Drift): This is the noise from mvrnorm. It is random.
+
+If we had zero noise, the plot would look like perfect spokes on a wheel moving toward the center. But evolution isn't perfect. Mutations are random. So, a lineage tries to move toward the optimum, but it "stumbles" left and right along the way. This creates the "jittery" or cloud-like appearance.
+
+Once a lineage gets close to the optimum, the "pull" of selection becomes very weak (because the distance to the target is small), but the "noise" (random mutation) stays the same strength.
+
+- Because of this, lineages don't just hit the Red Star and stop; they orbit it.
+
+- They dance around the target in a cloud of "nearly optimal" shapes. This is known as the OU stationary distribution.
