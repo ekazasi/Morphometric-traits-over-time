@@ -1,11 +1,12 @@
 ### PACKAGE INSTALLATION AND SET-UP ### 
 
+# Set CRAN mirror for automated installation
 options(repos = c(CRAN = "https://cloud.r-project.org"))
 
-# Define the list of required packages
+# Define the list of required packages (dependencies)
 packages <- c("geomorph", "mvMORPH", "phytools", "vegan", "Rphylopars", "viridis", "plotly", "shiny", "ggplot2", "dplyr")
 
-# Check if packages are installed
+# Check for missing packages and install them
 missing_pkgs <- packages[!(packages %in% installed.packages()[, "Package"])]
 
 # Install missing packages if any exist
@@ -16,7 +17,7 @@ if(length(missing_pkgs)) {
   message("All packages are already installed.")
 }
 
-# Install ggtree (from Bioconductor)
+# Bioconductor specific installation for ggtree
 if (!require("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
@@ -27,10 +28,10 @@ if (!requireNamespace("ggtree", quietly = TRUE)) {
 # Load all libraries
 lapply(packages, library, character.only = TRUE)
 
+
 ### HELPER FUNCTION ###
 
-
-# Function that convert a matrix to a 3D array (used by geomorph)
+# Convert a row-wise shape matrix into a geomorph-compatible 3D array.
 reshape_to_array <- function(sim_data, n_land) {
   n_sp <- nrow(sim_data)
   # Transpose and set dimensions: [Landmarks, Dimensions, Specimens]
@@ -41,14 +42,22 @@ reshape_to_array <- function(sim_data, n_land) {
 
 ### SIMULATE THE SKULLS IN THE TIPS AND THE NODES ###
 
+# Purpose:
+# Simulate tip trait scores in PC space under BM or OU dynamics.
+# BM: X(t) = X(0) + epsilon with Var[e] proportional to branch length.
+# OU: dX_t = alpha(theta - X_t)dt + Sigma dW_t.
+
 simulate_tip_scores <- function(tree, root_state, sigma_matrix, target_state = NULL, model = "BM", alpha_val = NULL, pc_labels = NULL) {
   if (model == "BM") {
+    # BM: Shape changes randomly; variance increases linearly with time
     tip_scores <- mvSIM(
       tree,
       model = "BM1",
       param = list(theta = root_state, sigma = sigma_matrix)
     )
   } else {
+    # OU: Shape is pulled toward a 'target_state' (theta) with strength 'alpha'
+    n_pcs <- length(root_state)
     n_pcs <- length(root_state)
     alpha_matrix <- if (is.matrix(alpha_val)) alpha_val else diag(alpha_val, n_pcs)
     tip_scores <- mvSIM(
@@ -59,11 +68,13 @@ simulate_tip_scores <- function(tree, root_state, sigma_matrix, target_state = N
 
     # Shift all tips so the mean is anchored to the ancestor consensus (root_state)
     # rather than the stationary optimum.  This preserves relative variation while
-    # keeping the root at the correct starting position in PC space.
+    # keeping the root at the correct starting position in PC space
+    
     root_offset <- root_state - colMeans(tip_scores)
     tip_scores <- sweep(tip_scores, 2, root_offset, "+")
   }
 
+  # Assigns names of species to the rows and PC names to columns
   rownames(tip_scores) <- tree$tip.label
   if (!is.null(pc_labels) && length(pc_labels) == ncol(tip_scores)) {
     colnames(tip_scores) <- pc_labels
@@ -72,10 +83,13 @@ simulate_tip_scores <- function(tree, root_state, sigma_matrix, target_state = N
   tip_scores
 }
 
-# Pipeline step 6: reconstruct the internal node PC scores from the simulated
-# tip scores with a phylogenetic estimator instead of recursively simulating them.
+# Purpose: 
+# Reconstruct internal node states with maximum likelihood using phylopars.
+
 estimate_ancestral_scores <- function(tree, tip_scores, model = "BM") {
   trait_data <- data.frame(species = tree$tip.label, tip_scores, check.names = FALSE)
+  # phylopars handles the estimation of ancestral states across the whole tree topology
+  # Computes the most likely values for every internal split in the tree
   recon_fit <- phylopars(
     trait_data = trait_data,
     tree = tree,
@@ -85,13 +99,16 @@ estimate_ancestral_scores <- function(tree, tip_scores, model = "BM") {
     pheno_correlated = TRUE
   )
 
+  # Organize data into a single matrix combining both tips and reconstructed nodes
   reconstructed_scores <- recon_fit$anc_recon
   n_tips <- Ntip(tree)
   full_history <- matrix(NA, nrow = n_tips + tree$Nnode, ncol = ncol(reconstructed_scores))
   rownames(full_history) <- as.character(seq_len(n_tips + tree$Nnode))
   colnames(full_history) <- colnames(reconstructed_scores)
+  # Fills the matrix with tips
   full_history[as.character(seq_len(n_tips)), ] <- reconstructed_scores[tree$tip.label, , drop = FALSE]
   internal_node_ids <- as.character((n_tips + 1):(n_tips + tree$Nnode))
+  # and then fills it with internal nodes
   full_history[internal_node_ids, ] <- reconstructed_scores[internal_node_ids, , drop = FALSE]
 
   list(
@@ -99,6 +116,10 @@ estimate_ancestral_scores <- function(tree, tip_scores, model = "BM") {
     full_history = full_history
   )
 }
+
+
+## Purpose: 
+# Run simulation and ancestral reconstruction and return full history.
 
 simulate_and_reconstruct_history <- function(tree, root_state, sigma_matrix, target_state = NULL, model = "BM", alpha_val = NULL, pc_labels = NULL) {
   tip_scores <- simulate_tip_scores(
@@ -122,11 +143,16 @@ simulate_and_reconstruct_history <- function(tree, root_state, sigma_matrix, tar
 }
 
 
-### GET THE LANDMARK CONFIGURATIOS OF SPECIFIC TIMESTAMPS ###
+### GET LANDMARK CONFIGURATIONS AT SPECIFIC TIMESTAMPS ###
+
+# Purpose: 
+# Extract branch-wise shape states at one requested geological time.
+# Sample branch states at a geological time slice (Ma) by interpolating
+# between parent and child node states in PC space.
 
 sample_tree_at_time <- function(tree, full_data, target_time, alpha_val = NULL, model = NULL) {
   edges <- tree$edge
-  heights <- nodeHeights(tree)
+  heights <- nodeHeights(tree) # Start/End times for every branch
 
   slice_coords <- matrix(NA, nrow = 0, ncol = ncol(full_data))
   lineage_ids <- c()
@@ -135,6 +161,7 @@ sample_tree_at_time <- function(tree, full_data, target_time, alpha_val = NULL, 
     start_h <- heights[e, 1]
     end_h <- heights[e, 2]
 
+    # Check if the branch exists at the target_time
     if (target_time >= start_h && target_time <= end_h) {
       parent_node <- edges[e, 1]
       child_node <- edges[e, 2]
@@ -144,9 +171,11 @@ sample_tree_at_time <- function(tree, full_data, target_time, alpha_val = NULL, 
       branch_duration <- end_h - start_h
 
       if (model == "OU") {
+        # OU interpolation: nonlinear pull toward the endpoint state.
         local_pull <- if (branch_duration == 0) 1 else (1 - exp(-alpha_val * dt_slice)) / (1 - exp(-alpha_val * branch_duration))
         interp <- p_coords + local_pull * (c_coords - p_coords)
       } else {
+        # BM interpolation: linear interpolation along the branch segment.
         prop <- dt_slice / branch_duration
         interp <- p_coords + prop * (c_coords - p_coords)
       }
@@ -160,6 +189,9 @@ sample_tree_at_time <- function(tree, full_data, target_time, alpha_val = NULL, 
   return(slice_coords)
 }
 
+
+## Purpose: 
+# Generate time-ordered snapshot matrices across all requested intervals.
 
 generate_all_snapshots <- function(tree, intervals, full_history, alpha_val = NULL, model = NULL) {
   snapshot_list <- list()
@@ -177,8 +209,11 @@ generate_all_snapshots <- function(tree, intervals, full_history, alpha_val = NU
   return(snapshot_list)
 }
 
-# Pipeline step 9: after back-projection, align all temporal snapshots again so
+## Purpose: 
+# After back-projection, align all temporal snapshots again so
 # any coordinate-space noise is removed before diagnostics or morphospace plots.
+# Apply GPA jointly to all snapshots and return aligned snapshot matrices.
+
 perform_final_gpa_on_snapshots <- function(snapshot_list, n_land) {
   snapshot_sizes <- vapply(snapshot_list, nrow, integer(1))
   all_snapshots <- do.call(rbind, snapshot_list)
@@ -201,6 +236,9 @@ perform_final_gpa_on_snapshots <- function(snapshot_list, n_land) {
   )
 }
 
+## Purpose: 
+# GPA-align shapes and compute PCA coordinates for diagnostics.
+
 align_shape_matrix_for_diagnostics <- function(shape_matrix, n_land, target_config = NULL) {
   all_points_matrix <- shape_matrix
   target_index <- NULL
@@ -222,8 +260,11 @@ align_shape_matrix_for_diagnostics <- function(shape_matrix, n_land, target_conf
   )
 }
 
-# Pipeline step 10: show the reconstructed tips and internal nodes as a tree in
+## Purpose: 
+# Plot tree-connected node/tip trajectories in PCA morphospace.
+# show the reconstructed tips and internal nodes as a tree in
 # morphospace rather than only as disconnected snapshot point clouds.
+
 plot_phylomorphospace <- function(tree, full_history, n_land, title = "Phylomorphospace", target_config = NULL) {
   diag_data <- align_shape_matrix_for_diagnostics(full_history, n_land, target_config = target_config)
   pca_scores <- diag_data$pca$x[seq_len(nrow(full_history)), 1:2, drop = FALSE]
@@ -258,6 +299,9 @@ plot_phylomorphospace <- function(tree, full_history, n_land, title = "Phylomorp
     text(target_pca[1, 1], target_pca[1, 2], labels = "optimum", pos = 3, col = "red", cex = 0.6)
   }
 }
+
+## Purpose: 
+# Build an interactive 3D landmark + wireframe Plotly object.
 
 build_wireframe_plotly <- function(coords, wireframe_links, title_text, point_color = "steelblue") {
   fig <- plot_ly(type = "scatter3d") |>
@@ -304,7 +348,10 @@ build_wireframe_plotly <- function(coords, wireframe_links, title_text, point_co
   )
 }
 
-# Performs PCA and generates Morphospace plots
+# Purpose: 
+# Visualize temporal dispersion of simulated shapes in PCA morphospace.
+# Perform GPA -> PCA on all snapshots and render the temporal morphospace.
+
 analyze_rigorous_morphospace <- function(snapshot_list, n_land, title = "Shape Space Expansion", target_config = NULL, start_time_ma = 1, end_time_ma = 50) {
   all_points_matrix <- do.call(rbind, snapshot_list)
 
@@ -369,9 +416,11 @@ analyze_rigorous_morphospace <- function(snapshot_list, n_land, title = "Shape S
   text(x = (xl + xr) / 2, y = yt + (yt - yb) * 0.03, labels = "Time", pos = 3, cex = 0.9, font = 2, xpd = TRUE)
 }
 
-### RUN THE SCRIPT - SET PARAMETERS ###
+### RUN THE SCRIPT  ###
 
-# Parameters are now provided by the Shiny app inputs.
+
+## Purpose: 
+# Read Morphologika input and return coordinates plus metadata.
 
 load_morphologika_data <- function(file_path) {
   all_skulls_local <- read.morphologika(file_path)
@@ -400,12 +449,18 @@ load_morphologika_data <- function(file_path) {
   )
 }
 
-# Pipeline step 1: for a user-selected taxon, align its specimens with gpagen
+## Purpose: 
+#Compute consensus landmark configuration for one selected taxon.
+# for a user-selected taxon, align its specimens with gpagen
 # and use the resulting consensus as the representative shape.
+
 compute_taxon_consensus <- function(morph_data, taxon_name) {
   selected_idx <- which(morph_data$specimen_taxa == taxon_name)
   gpagen(morph_data$coords_data[, , selected_idx, drop = FALSE], print.progress = FALSE)$consensus
 }
+
+## Purpose: 
+# Apply optional node-age overrides and rebuild a calibrated branch-time tree.
 
 build_calibrated_tree <- function(tree, calibration_text = NULL) {
   node_ids <- as.character((Ntip(tree) + 1):(Ntip(tree) + tree$Nnode))
@@ -437,9 +492,12 @@ build_calibrated_tree <- function(tree, calibration_text = NULL) {
   )
 }
 
+## Purpose: 
+# Build PCA simulation space, module assignments, and Sigma structure.
+
 build_pc_simulation_space <- function(morph_data, ancestor_taxon, target_taxon, pc_mode, variance_threshold, requested_pcs, taxa_limit, module_text, sigma_diag, sigma_offdiag) {
   aligned_coords <- gpagen(morph_data$coords_data, print.progress = FALSE)$coords # Run GPA
-  aligned_matrix <- two.d.array(aligned_coords) # 3D coordinates to 2D coordiantes
+  aligned_matrix <- two.d.array(aligned_coords) # 3D coordinates to 2D coordinates
   pca_result <- prcomp(aligned_matrix, center = TRUE, scale. = FALSE) # Run PCA
 
   explained_variance <- (pca_result$sdev ^ 2) / sum(pca_result$sdev ^ 2) # calculates how much information about the shape each PC has
@@ -453,9 +511,9 @@ build_pc_simulation_space <- function(morph_data, ancestor_taxon, target_taxon, 
   retained_rotation <- pca_result$rotation[, retained_indices, drop = FALSE]
 
   
-  # the following block takes the landmark numbers that the user provides as input and makes a list
-  # with which landmark numbers belong to which functional part of the skull. If the user doesn't provide
-  # text, treats the skull as one module
+  # Purpose:
+  # Build biologically motivated modules from landmark sets.
+  # PCs are later grouped by dominant module loadings to induce block structure in Sigma.
   
   module_definitions <- if (is.null(module_text) || !nzchar(trimws(module_text))) {
     list(Global = seq_len(morph_data$n_land))
@@ -493,10 +551,11 @@ build_pc_simulation_space <- function(morph_data, ancestor_taxon, target_taxon, 
   ordered_pc_indices <- retained_indices[pc_order]
   ordered_module_names <- module_names[dominant_modules[pc_order]]
 
+  # Sigma is diagonal by default; within-module off-diagonal entries encode correlated evolution.
   sigma_matrix <- diag(sigma_diag, retained_pcs) # Creates a matrix where every trait evolves at a baseline rate
   for (i in seq_len(retained_pcs)) {
     for (j in seq_len(retained_pcs)) {
-      if (i != j && ordered_module_names[i] == ordered_module_names[j]) sigma_matrix[i, j] <- sigma_offdiag # eg If PC1 and PC2 both belong to the "Snout," this line adds a correlation between them
+      if (i != j && ordered_module_names[i] == ordered_module_names[j]) sigma_matrix[i, j] <- sigma_offdiag # e.g., if PC1 and PC2 both belong to the "Snout", this adds a covariance term
     }
   }
   pc_labels <- paste0("PC", ordered_pc_indices)
@@ -533,8 +592,8 @@ build_pc_simulation_space <- function(morph_data, ancestor_taxon, target_taxon, 
     pc_labels = pc_labels
   )
 
-# The function returns a list containing the starting shape (root), the target shape (optimum), the rotation matrix 
-# (to convert PCs back to 3D later), and the sigma matrix 
+# Returns root/target states in PC space plus back-projection objects.
+# rotation maps from retained PC space back to landmark coordinate space.
   
   list(
     root_state = as.numeric((ancestor_vector - pca_model$center) %*% sigma_info$ordered_rotation),
@@ -549,6 +608,9 @@ build_pc_simulation_space <- function(morph_data, ancestor_taxon, target_taxon, 
     sigma_info = sigma_info
   )
 }
+
+## Purpose: 
+# Format calibrated node ages into a readable reference table.
 
 format_node_age_reference <- function(tree, node_ages) {
   node_ids <- as.integer(names(node_ages))
@@ -575,7 +637,7 @@ unique_taxa <- character(0)
 default_ancestor_taxon <- NULL
 
 
-### INTERACTIVE PLOT WITH THE NODES, THE TIPS AND THE INTERSECTIOS ON SPECIFIC TIMESTAMPS ###
+### INTERACTIVE PLOT WITH NODES, TIPS, AND TIMESTAMP INTERSECTIONS ###
 
 ui <- fluidPage(
   sidebarLayout(
@@ -630,20 +692,33 @@ ui <- fluidPage(
   )
 )
 
+## Purpose: 
+# Define Shiny callbacks that execute and visualize the simulation pipeline.
+
 server <- function(input, output, session) {
+  # Pipeline stage 1: persistent reactive container for tree topology.
+  # Updated by topology controls; consumed when the simulation is triggered.
   tree_topology <- reactiveVal(NULL)
 
+  # Pipeline stage 2 (callback): load and parse morphometric input file.
+  # Trigger: input$morph_file changes.
+  # Output: coordinates, taxa labels, and metadata used in all downstream stages.
   morph_data_reactive <- reactive({
     req(input$morph_file)
     selected_file <- input$morph_file$datapath
     load_morphologika_data(selected_file)
   })
 
+  # Pipeline stage 3 (callback): generate/update random tree topology.
+  # Trigger: n_tips or tree_scale changes.
   observeEvent(list(input$n_tips, input$tree_scale), {
     req(input$n_tips, input$tree_scale)
     tree_topology(pbtree(n = as.integer(input$n_tips), scale = as.numeric(input$tree_scale)))
   }, ignoreInit = FALSE)
 
+  # Pipeline stage 4 (callback): keep ancestor/target selectors synchronized
+  # with taxa available in the uploaded Morphologika file.
+  # Trigger: morph_data_reactive() changes.
   observeEvent(morph_data_reactive(), {
     md <- morph_data_reactive()
     updateSelectInput(session, "ancestor_taxon", choices = md$unique_taxa, selected = md$unique_taxa[1])
@@ -740,6 +815,15 @@ server <- function(input, output, session) {
              yaxis = list(title = "Y"))
   })
 
+  # Core pipeline callback:
+  # Trigger: input$run_sim button click.
+  # Stages inside this callback:
+  # 1) Build PCA simulation space and Sigma structure from modules.
+  # 2) Calibrate tree node ages.
+  # 3) Simulate/reconstruct histories in PC space (active model + BM + OU controls).
+  # 4) Slice trajectories through time and back-project to landmark coordinates.
+  # 5) Align snapshots (GPA) and compute Mantel diagnostics.
+  # Output: single state object consumed by all diagnostic/tree/3D outputs.
   sim_state <- eventReactive(input$run_sim, {
     req(input$n_tips, input$tree_scale, input$interval_by, input$ancestor_taxon, input$target_taxon, input$evol_model, input$sigma_offdiag, input$sigma_diag)
     md <- morph_data_reactive()
@@ -850,6 +934,7 @@ server <- function(input, output, session) {
     ou_array_local <- reshape_to_array(ou_tips_local, md$n_land)
     gpa_ou_local <- gpagen(ou_array_local, print.progress = FALSE)
 
+    # Mantel diagnostics: compare Procrustes shape distances vs phylogenetic path distances.
     morph_dist_bm_local <- dist(two.d.array(gpa_bm_local$coords))
     morph_dist_ou_local <- dist(two.d.array(gpa_ou_local$coords))
     phylo_dist_local <- as.dist(cophenetic(tree_local))
@@ -885,6 +970,8 @@ server <- function(input, output, session) {
     )
   }, ignoreInit = FALSE)
 
+  # Diagnostics callbacks (all depend on sim_state()).
+  # These render model-fit summaries and shape-time relationships.
   output$mantel_info <- renderPrint({
     sim <- sim_state()
     cat("BM Mantel Result:\n")
@@ -953,8 +1040,12 @@ server <- function(input, output, session) {
     analyze_rigorous_morphospace(sim$ou_snapshots, sim$n_land, title = "OU: Shapes under selection", target_config = sim$target, start_time_ma = min(sim$intervals), end_time_ma = max(sim$intervals))
   })
 
+  # Purpose: 
+  # Access cached coordinates from the most recent phylo base plot.
+  
   last_plot <- function() get("last_plot.phylo", envir = .PlotPhyloEnv)
 
+  # Tree callback: renders the clickable topology view used for node/slice selection.
   output$tree_plot <- renderPlot({
     sim <- sim_state()
     plot(sim$tree, show.tip.label = TRUE, edge.width = 2)
@@ -983,6 +1074,9 @@ server <- function(input, output, session) {
     }
   })
 
+  # Selection callback:
+  # Maps a click on the tree panel to either (a) nearest node or (b) active time-slice
+  # branch intersection. This acts as the interaction bridge from tree -> 3D skull preview.
   selection_data <- reactive({
     sim <- sim_state()
     req(input$tree_click)
@@ -1008,6 +1102,7 @@ server <- function(input, output, session) {
     return(NULL)
   })
 
+  # Selection summary callback: human-readable description of current tree selection.
   output$selection_info <- renderPrint({
     sim <- sim_state()
     sel <- selection_data()
@@ -1024,6 +1119,9 @@ server <- function(input, output, session) {
     }
   })
 
+  # 3D callback:
+  # Uses selection_data() + sim_state() to fetch either node/tip coordinates
+  # or a lineage snapshot at a selected time slice, then draws a wireframe skull.
   output$skull_3d <- renderPlotly({
     sim <- sim_state()
     sel <- selection_data()
