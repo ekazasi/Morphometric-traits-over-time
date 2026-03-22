@@ -70,4 +70,16 @@ git clone https://github.com/ekazasi/Morphometric-traits-over-time
 <br>
 <br>
 
+Directory's tree structure:
+```
+project/
+├── app.R 
+├── data/
+│   └── example_data.txt
+└── README.md
+```
+<br>
+<br>
+
+
 *This web application was made for the purposes of a project assignment in the BINP29 course, "DNA Sequencing Informatics II" from the Bioinformatics master of Lund University.*
