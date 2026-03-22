@@ -66,3 +66,8 @@ git clone https://github.com/ekazasi/Morphometric-traits-over-time
 3. Run the Shiny App (the .R script as it is)
 
 4. Load Data: Within the app, upload the *data/example_data.txt* file to see the primate cranial configuration simulation.
+
+<br>
+<br>
+
+*This web application was made for the purposes of a project assignment in the BINP29 course, "DNA Sequencing Informatics II" from the Bioinformatics master of Lund University.*
