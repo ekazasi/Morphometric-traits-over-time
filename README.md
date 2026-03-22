@@ -24,6 +24,7 @@ In order to be able to reproduce the same results, make sure you acquire the sam
 - ```shiny```: shiny_1.13.0
 - ```ggplot2```: ggplot2_4.0.2
 - ```dplyr```: dplyr_1.2.0
+- ```ggtree```: ggtree_4.0.4
 
 Other important packages and their versions:
 - ```BiocManager```: BiocManager_1.30.27
