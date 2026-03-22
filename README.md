@@ -10,10 +10,10 @@ Statistical Diagnostics: Built-in Mantel tests and PCA morphospace expansion plo
 
 ## Requirements
 To run this pipeline, you need R installed along with the following packages:
-```geomorph```, ```phytools```, ```mvMORPH```, ```Rphylopars```, ```vegan```, ```viridis```, ```plotly```, ```shiny```, ```ggplot2```, ```dplyr```.
+```geomorph```, ```phytools```, ```mvMORPH```, ```Rphylopars```, ```vegan```, ```viridis```, ```plotly```, ```shiny```, ```ggplot2```, ```dplyr```, ```ggtree```.
 
 In order to be able to reproduce the same results, make sure you acquire the same R version, as well as, tool versions:
-- R version: 4.5.2 (2025-10-31)
+- **R version:** 4.5.2 (2025-10-31)
 - ```geomorph```: geomorph_4.1.0
 - ```mvMORPH```: mvMORPH_1.2.1
 - ```phytools```: phytools_2.5-2
@@ -32,7 +32,7 @@ Other important packages and their versions:
 <br>
 <br>
 
-**Pipeline:** Simulate bone 3D shapes by simulating landmark configurations. 
+**Pipeline:** Represent bone 3D shapes by simulating landmark configurations. 
 
 Stages:
 1. Data Acquisition and Pre-processing:
@@ -63,7 +63,7 @@ git clone https://github.com/ekazasi/Morphometric-traits-over-time
     - Click Choose Directory...
     - Navigate to your folder (where you cloned the git repository) and click Open 
 
-3. Run the Shiny App (the .R script as it is)
+3. Run the .R script and access the Shiny web app.
 
 4. Load Data: Within the app, upload the *data/example_data.txt* file to see the primate cranial configuration simulation.
 
