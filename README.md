@@ -83,4 +83,4 @@ project/
 <br>
 
 
-*This web application was made for the purposes of a project assignment in the BINP29 course, "DNA Sequencing Informatics II" from the Bioinformatics master of Lund University.*
+*This work was made for the purposes of a project assignment in the BINP29 course, "DNA Sequencing Informatics II" from the Bioinformatics master of Lund University.*
