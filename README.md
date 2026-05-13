@@ -31,6 +31,22 @@ Other important packages and their versions:
 - ```RRPP```: RRPP_2.1.2
 
 <br>
+
+To ensure reproducibility and match the specific R version (4.5.2) and package dependencies used in this project (above), I recommend using the provided conda environment.
+
+<br>
+
+**-> Prerequisites:**
+- Miniconda or Anaconda installed on your system.
+
+<br>
+
+*See below how to create the project's environment*
+
+<br>
+
+-------------------------------------------------------------------------
+
 <br>
 
 **Pipeline:** Represent bone 3D shapes by simulating landmark configurations. 
@@ -58,15 +74,24 @@ Follow these steps to run the simulation using the provided example dataset:
 ```bash
 git clone https://github.com/ekazasi/Morphometric-traits-over-time
 ```
-2. Open RStudio and set the working directory to the project folder
+2. Create the environment
+```bash
+conda env create -f environment.yml
+```
+3. Activate the environment
+```bash
+conda activate morphometrics_pipeline
+```
+
+4. Open RStudio and set the working directory to the project folder
     - In the top menu bar, go to Session
     - Select Set Working Directory
     - Click Choose Directory...
     - Navigate to your folder (where you cloned the git repository) and click Open 
 
-3. Run the .R script and access the Shiny web app.
+5. Run the .R script and access the Shiny web app.
 
-4. Load Data: Within the app, upload the *data/example_data.txt* file to see the primate cranial configuration simulation.
+6. Load Data: Within the app, upload the *data/example_data.txt* file to see the primate cranial configuration simulation.
 
 <br>
 <br>
